@@ -1,0 +1,227 @@
+---
+title: "monthly-lake-erie-levels-1921-19"
+author: "Nitin Khandare"
+date: "September 21, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#########################################################################
+## The final 20% prediction loop using the best model
+###The output would be one prediction vector and one proportion vector
+library(xts); library(gsubfn); library(quantmod)
+#library(xtsPlots); 
+library(forecast)
+library(MASS); library(TTR); library(tseries)
+library(fBasics); library(zoo)
+
+```
+
+
+## reading in the data and formatting
+
+```{r}
+data<-read.csv("E:/Term 3/Ad Machine Learning/MakeOverAssignment-1/monthly-lake-erie-levels-1921-19.csv",header=TRUE,stringsAsFactors=FALSE)
+
+dim(data)
+```
+
+### omit the NA Values
+```{r}
+data<-na.omit(data)
+```
+
+### Convert Data in Time Series format
+```{r}
+data[,1] = as.yearmon(data[,1])
+
+data = xts(data[,-1], order.by=data[,1])
+
+```
+
+
+## splitting the data into parts
+```{r}
+first <- data[1:360,]; firstX<-as.ts(first)
+second <- data[361:480,]; secondX<-as.ts(second)
+third <- data[481:600,]; thirdX<-as.ts(third)
+```
+
+
+
+## Plotting the ACF and PACF
+```{r}
+
+par(mfrow=c(1,2))
+acf(data)
+acfPlot(data)
+```
+
+
+```{r}
+
+pacf(data)
+par(mfrow=c(1,1))
+```
+
+
+
+### intial plot of the entire series
+```{r}
+plot(data,main="Monthly Lake Erie Levels 1921-1970",ylab="Water level above LWD in inches")
+
+```
+
+```{r}
+plot(first,main="First Lake Erie Levels 1921-1970",ylab="Water Level in inches")
+
+```
+
+```{r}
+plot(second,main="Second Lake Erie Levels 1921-1970",ylab="Water Level in inches")
+
+```
+
+```{r}
+plot(third,main="Third Lake Erie Levels 1921-1970",ylab="Water Level in inches")
+```
+
+
+
+### initially vectors for big loop
+```{r}
+Freq <- numberOfFreq <- j <- 2; PP <- 2; D <- 1; Q <- 1;
+finalPredTable <- as.data.frame(matrix(nrow=length(thirdX), ncol = 1))
+finalPropor <- as.data.frame(matrix(nrow = length(thirdX), ncol = 1))
+colnames(finalPropor) <- c("F2")
+colnames(finalPredTable) <- paste("a(", PP, D, Q,")", "F =", Freq)
+ub<-lb<-numeric(length(thirdX))
+
+```
+
+
+
+## start Asssessment loop
+```{r}
+for(i in 1:length(thirdX)){
+    if(i==1){
+      # get the original 80% of the observations
+        series<-c(firstX, secondX)
+        }else{# add new observations from the hold-out set
+series<-c(firstX, secondX, thirdX[1:(i-1)])
+}
+ Ts<-length(series)
+ I<-abs(fft(series))^2/Ts
+if(Ts%%2==0){#if n is even
+
+   f<-1:(Ts/2-1)/Ts
+   P<-(4/Ts)*I[2:(Ts/2)]
+   
+}else{#if n is odd
+  
+  f<-1:{(Ts-1)/2}/Ts
+  P<-(4/Ts)*I[2:{(Ts+1)/2}]
+}
+ 
+varseries<-var(series)*(1-1/Ts)
+freq <- f[order(P, decreasing = TRUE)[1:j]]
+regMatrix <- matrix(ncol = length(freq)*2, nrow = Ts+1)
+
+
+for (l in 1:j){
+regMatrix[,{2*l}-1] <-cos(2*pi* {1:(Ts+1)}*freq[l])
+regMatrix[,2*l] <-sin(2*pi * {1:(Ts+1)}*freq[l])
+}
+
+reg <- lm(series~regMatrix[-(Ts+1),])
+specPred<-sum(reg$coefficients*c(1,regMatrix[Ts+1,]))
+finalPropor[i,] <-0.5*sum(reg$coefficients[-1]^2)/varseries
+
+############## FIT ARIMA Model ################
+tempModel <- arima(x = reg$residuals, c(PP,D,Q))
+finalPredTable[i,] <- specPred+forecast(tempModel,h=1,level=c(80))$mean
+ub[i]<-specPred+forecast(tempModel,h=1,level=c(80))$upper
+lb[i]<-specPred+forecast(tempModel,h=1,level=c(80))$lower
+}
+```
+
+#### Calculating MSE 
+```{r}
+
+finalMSE<-numeric(dim(finalPredTable)[2])
+names(finalMSE)<-colnames(finalPredTable)
+finalMSE <- mean((finalPredTable-as.numeric(thirdX))^2)
+```
+
+```{r}
+plot(coredata(thirdX))
+lines(finalPredTable[,which.min(finalMSE)])
+```
+
+
+```{r}
+## determining the frequency
+I<-abs(fft(data))^2/length(data)
+P<-(4/length(data))*I[1:(length(data)/2)]
+f<-0:(length(data)/2-1)/length(data)
+plot(f[-1],P[-1],type="l")
+orderP <- order(P, decreasing = TRUE)
+freq <- f[orderP[2:3]]
+abline(v=freq,col="red")
+```
+
+
+## final prediction plot
+```{r}
+
+plot(coredata(thirdX),pch=21,bg="black", main = "Predicting the final 20%",
+cex.main=3, cex.axis=1.3, cex.lab = 1.5, ylab = "Water level
+above LWD in inches")
+lines(finalPredTable,col="red",lwd=2)
+lines(ub,col="cyan")
+lines(lb,col="cyan")
+index(third)[which.max(as.matrix(finalPredTable-as.numeric(thirdX)))]
+```
+
+
+## detrending using spectral analysis
+```{r}
+d <- as.numeric(data)
+y <- as.ts(data)
+
+
+regMatrix <- matrix(ncol = length(freq)*2, nrow = nrow(data))
+for (i in 1:length(freq)){
+  f1 <- cos(2*pi* {1:nrow(data)}*freq[i])
+  f2 <- sin(2*pi * {1:nrow(data)}*freq[i])
+  regMatrix[,{2*i}-1] <- f1
+  regMatrix[,2*i] <- f2
+}
+
+reg <- lm(y~regMatrix)
+plot.ts(d)
+lines(fitted(reg), lwd=2, col="red")
+
+plot(resid(reg), main = "Residuals of Regression")
+abline(h = 0, col ="red" , lty = 2, lwd = 3)
+
+
+reg<-lm(data~index(data))
+panel_with_regression_line <- function(index, x, ...){
+  default.panel(index, x, ...);m <- lm(x ~ index);abline(m, col="red4", lwd=2)}
+plot.xts(cbind(sin(pi*data/6)+cos(pi*data/6),reg$residuals), 
+         main = "Regression on log GDP and the corresponding residuals",
+         lwd = 2, panel = panel_with_regression_line)
+boxcox(reg, lambda=seq(from=-2, to=2, by=0.05), plotit=T)
+reg<-lm(sqrt(data)~index(data))
+plot.xts(cbind(sqrt(data),reg$residuals), 
+         main = "Regression on log GDP and the corresponding residuals",
+         lwd = 2, panel = panel_with_regression_line)
+forecast::auto.arima(reg$residuals)
+
+```
+
