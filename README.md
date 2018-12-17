@@ -53,7 +53,9 @@ However quandl already provided a Good data
 
 before starting modelling understand the deep learning approach and RNN-LSTMs  
 http://karpathy.github.io/2015/05/21/rnn-effectiveness/
+
 http://colah.github.io/posts/2015-08-Understanding-LSTMs/
+
 https://www.analyticsvidhya.com/blog/2017/12/introduction-to-recurrent-neural-networks/
 
 
